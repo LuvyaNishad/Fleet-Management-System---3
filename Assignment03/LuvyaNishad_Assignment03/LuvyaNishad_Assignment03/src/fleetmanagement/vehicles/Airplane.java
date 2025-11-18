@@ -11,6 +11,7 @@ import fleetmanagement.interfaces.PassengerCarrier;
 public class Airplane extends AirVehicle implements FuelConsumable, PassengerCarrier, CargoCarrier, Maintainable {
 
     private double fuelLevel;
+    private final double FUEL_CAPACITY = 500.0; // Max capacity
     private final double cargoCapacity = 10000.0;
     private final int passengerCapacity = 200;
     private int currentPassengers;
@@ -25,18 +26,16 @@ public class Airplane extends AirVehicle implements FuelConsumable, PassengerCar
         this.maintenanceNeeded = false;
     }
 
-    // --- NEW METHOD FOR ASSIGNMENT 3 ---
     @Override
     public boolean simulateTravel(double distance) {
         try {
             consumeFuel(distance);
             addMileage(distance);
-            return true; // Still has fuel
+            return true;
         } catch (InsufficientFuelException e) {
-            return false; // Out of fuel
+            return false;
         }
     }
-    // --- END NEW METHOD ---
 
     @Override
     public void move(double distance) throws InvalidOperationException {
@@ -59,8 +58,17 @@ public class Airplane extends AirVehicle implements FuelConsumable, PassengerCar
     @Override
     public void refuel(double amount) throws InvalidOperationException {
         if (amount <= 0) throw new InvalidOperationException("Refuel amount must be positive");
+
+        if (fuelLevel >= FUEL_CAPACITY) {
+            System.out.println("Airplane fuel tank is already full.");
+            return;
+        }
+
         fuelLevel += amount;
-        // If refueled, it can resume
+        if (fuelLevel > FUEL_CAPACITY) {
+            fuelLevel = FUEL_CAPACITY;
+        }
+
         if (getStatus().equals("Out of Fuel")) {
             resumeSimulation();
         }
@@ -79,7 +87,7 @@ public class Airplane extends AirVehicle implements FuelConsumable, PassengerCar
         return fuelNeeded;
     }
 
-    // ... (All other methods: boardPassengers, loadCargo, toCSVString, etc. remain unchanged) ...
+    // ... (Remaining methods: boardPassengers, loadCargo, toCSVString, etc. unchanged) ...
     @Override
     public void boardPassengers(int count) throws OverloadException {
         if (count <= 0) throw new OverloadException("Passenger count must be positive");

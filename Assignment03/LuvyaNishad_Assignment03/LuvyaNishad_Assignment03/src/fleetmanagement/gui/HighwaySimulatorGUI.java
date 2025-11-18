@@ -2,7 +2,6 @@ package fleetmanagement.gui;
 
 import fleetmanagement.vehicles.Vehicle;
 import fleetmanagement.vehicles.Car;
-import fleetmanagement.vehicles.Bus;
 import fleetmanagement.vehicles.Truck;
 import fleetmanagement.vehicles.Airplane;
 import fleetmanagement.exceptions.InvalidOperationException;
@@ -26,14 +25,12 @@ public class HighwaySimulatorGUI {
     private JLabel lblVehicle1, lblVehicle2, lblVehicle3;
     private JButton btnRefuel1, btnRefuel2, btnRefuel3;
 
-    // --- THE FIX IS HERE ---
-    // Added 'synchronized' to prevent the race condition.
-    // Remove this keyword to demonstrate the bug for your report.
-    public synchronized void incrementHighwayCounter() {
+    // --- THE BUG IS HERE (Uncorrected Version) ---
+    // NO 'synchronized' keyword = Race Condition happens here
+    public void incrementHighwayCounter() {
         int currentDistance = highwayDistance;
         try {
-            // Sleep to allow other threads to interfere (if unsynchronized)
-            Thread.sleep(5);
+            Thread.sleep(5); // Force context switch to reveal bug
         } catch (InterruptedException e) {}
         highwayDistance = currentDistance + 1;
     }
@@ -49,9 +46,9 @@ public class HighwaySimulatorGUI {
     }
 
     public void createAndShowGUI() throws InvalidOperationException {
-        frame = new JFrame("Fleet Highway Simulator (Final Version)");
+        frame = new JFrame("Fleet Highway Simulator (UNCORRECTED Version)");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(700, 450); // Slightly taller to fit everything
+        frame.setSize(750, 500);
         frame.setLayout(new BorderLayout());
 
         // 1. Top Control Panel
@@ -76,7 +73,7 @@ public class HighwaySimulatorGUI {
         vehicleListPanel.setLayout(new BoxLayout(vehicleListPanel, BoxLayout.Y_AXIS));
         vehicleListPanel.setBorder(BorderFactory.createTitledBorder("Vehicle Status"));
 
-        // Setup Rows for Vehicles
+        // Setup Vehicle Rows
         JPanel panelV1 = createVehicleRow("Vehicle 1", btnRefuel1 = new JButton("Refuel Car"));
         lblVehicle1 = (JLabel) panelV1.getComponent(0);
 
@@ -117,9 +114,11 @@ public class HighwaySimulatorGUI {
         JPanel panel = new JPanel(new BorderLayout());
         JLabel label = new JLabel(labelText);
         label.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        refuelBtn.setPreferredSize(new Dimension(130, 30));
         refuelBtn.setEnabled(false);
 
-        JPanel btnPanel = new JPanel();
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         btnPanel.add(refuelBtn);
 
         panel.add(label, BorderLayout.CENTER);
@@ -129,21 +128,21 @@ public class HighwaySimulatorGUI {
     }
 
     private void setupFleet() throws InvalidOperationException {
-        // --- CONFIG FIX: Lower fuel for faster testing ---
+        // --- Restored Realistic Capacities ---
 
-        // 1. Car (Efficiency ~15 km/L). 5L = 75km = ~75 seconds runtime
+        // 1. Car: 50.0 Liters
         Car car1 = new Car("C001", "Toyota Camry", 180.0, 4);
-        car1.refuel(5.0);
+        car1.refuel(50.0);
         car1.setSimulator(this);
 
-        // 2. Truck (Efficiency ~8 km/L). 10L = 80km = ~80 seconds runtime
+        // 2. Truck: 100.0 Liters
         Truck truck1 = new Truck("T001", "Ford F-150", 120.0, 6);
-        truck1.refuel(10.0);
+        truck1.refuel(100.0);
         truck1.setSimulator(this);
 
-        // 3. Airplane (Efficiency ~5 km/L). 20L = 100km = ~100 seconds runtime
+        // 3. Airplane: 500.0 Liters
         Airplane plane1 = new Airplane("A001", "Boeing 737", 850.0, 35000.0);
-        plane1.refuel(20.0);
+        plane1.refuel(500.0);
         plane1.setSimulator(this);
 
         fleet.add(car1);
@@ -154,6 +153,7 @@ public class HighwaySimulatorGUI {
     private void addListeners() {
         btnStart.addActionListener(e -> {
             for (Vehicle v : fleet) {
+                // Create new threads only if they don't exist or are dead
                 Thread t = new Thread(v);
                 vehicleThreads.add(t);
                 t.start();
@@ -190,19 +190,21 @@ public class HighwaySimulatorGUI {
             btnRefuel3.setEnabled(false);
         });
 
-        // Refuel Logic
-        btnRefuel1.addActionListener(e -> performRefuel(0, 5.0));
-        btnRefuel2.addActionListener(e -> performRefuel(1, 10.0));
-        btnRefuel3.addActionListener(e -> performRefuel(2, 20.0));
+        // Refuel Listeners
+        btnRefuel1.addActionListener(e -> performRefuel(0, 50.0));
+        btnRefuel2.addActionListener(e -> performRefuel(1, 100.0));
+        btnRefuel3.addActionListener(e -> performRefuel(2, 500.0));
     }
 
     private void performRefuel(int vehicleIndex, double amount) {
         try {
             Vehicle v = fleet.get(vehicleIndex);
-            // Cast is safe because we know the order
             if (v instanceof fleetmanagement.interfaces.FuelConsumable) {
                 ((fleetmanagement.interfaces.FuelConsumable) v).refuel(amount);
-                v.resumeSimulation(); // Resume immediately after refuel
+
+                // Logic: If it was "Out of Fuel", it auto-resumes (handled inside Vehicle class)
+                // If it was manually "Paused", it effectively stays paused until User clicks Resume
+                // (Because refuel doesn't change 'isPaused' flag unless it was out of fuel)
             }
         } catch (InvalidOperationException ex) {
             ex.printStackTrace();
@@ -228,18 +230,23 @@ public class HighwaySimulatorGUI {
     }
 
     private void updateVehicleLabel(JLabel label, JButton refuelBtn, Vehicle v) {
-        // Safe cast to access fuel level (all these extend FuelConsumable in this setup)
         double fuel = 0;
         if (v instanceof fleetmanagement.interfaces.FuelConsumable) {
             fuel = ((fleetmanagement.interfaces.FuelConsumable) v).getFuelLevel();
         }
 
-        label.setText(String.format("<html><b>%s</b> (%s): %.0f km travelled<br/>Fuel: %.1f L  |  Status: <font color='%s'>%s</font></html>",
-                v.getClass().getSimpleName(), v.getId(), v.getCurrentMileage(), fuel,
-                v.getStatus().equals("Running") ? "green" : "red", v.getStatus()));
+        String status = v.getStatus();
+        String color = "black";
+        if (status.equals("Running")) color = "green";
+        else if (status.equals("Out of Fuel")) color = "red";
+        else if (status.equals("Paused")) color = "orange";
 
-        // Only enable refuel if status is explicitly "Out of Fuel"
-        if (v.getStatus().equals("Out of Fuel")) {
+        label.setText(String.format("<html><b>%s</b> (%s): %.0f km travelled<br/>Fuel: %.1f L  |  Status: <font color='%s'>%s</font></html>",
+                v.getClass().getSimpleName(), v.getId(), v.getCurrentMileage(), fuel, color, status));
+
+        // --- FIX: Enable Refuel if NOT Running ---
+        // This allows refuel when Paused, Stopped, or Out of Fuel
+        if (!status.equals("Running") && !status.equals("Idle")) {
             refuelBtn.setEnabled(true);
         } else {
             refuelBtn.setEnabled(false);

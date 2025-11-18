@@ -10,6 +10,7 @@ import fleetmanagement.interfaces.PassengerCarrier;
 public class Car extends LandVehicle implements FuelConsumable, PassengerCarrier, Maintainable {
 
     private double fuelLevel;
+    private final double FUEL_CAPACITY = 50.0; // Max capacity
     private final int passengerCapacity = 5;
     private int currentPassengers;
     private boolean maintenanceNeeded;
@@ -56,7 +57,18 @@ public class Car extends LandVehicle implements FuelConsumable, PassengerCarrier
     @Override
     public void refuel(double amount) throws InvalidOperationException {
         if (amount <= 0) throw new InvalidOperationException("Refuel amount must be positive");
+
+        // Logic: Fill up but do not exceed capacity
+        if (fuelLevel >= FUEL_CAPACITY) {
+            System.out.println("Car fuel tank is already full.");
+            return;
+        }
+
         fuelLevel += amount;
+        if (fuelLevel > FUEL_CAPACITY) {
+            fuelLevel = FUEL_CAPACITY; // Cap at max
+        }
+
         // If refueled, it can resume
         if (getStatus().equals("Out of Fuel")) {
             resumeSimulation();

@@ -9,12 +9,10 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
     private double maxSpeed;
     private double currentMileage;
 
-    // Threading flags
     private volatile boolean isRunning = true;
-    protected volatile boolean isPaused = false; // changed to protected so subclasses can access if needed
+    protected volatile boolean isPaused = false;
     private volatile String status = "Idle";
 
-    // Reference to the shared simulator
     private HighwaySimulatorGUI simulator;
 
     public Vehicle(String id, String model, double maxSpeed) throws InvalidOperationException {
@@ -36,36 +34,32 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
         this.status = "Running";
         while (isRunning) {
             try {
-                // --- LOGIC FIX 1: Handle Pause Correctly ---
+                // Handle Pause
                 while (isPaused) {
-                    // Only overwrite status if we are NOT Out of Fuel
-                    // This ensures the GUI sees "Out of Fuel" and enables the Refuel button
                     if (!this.status.equals("Out of Fuel")) {
                         this.status = "Paused";
                     }
                     Thread.sleep(100);
                 }
 
-                // If we just woke up from a pause (and have fuel), set to Running
                 if (!this.status.equals("Out of Fuel")) {
                     this.status = "Running";
                 }
 
-                // 1. Simulate Travel (consumes fuel)
+                // Simulate Travel
                 boolean stillHasFuel = simulateTravel(1.0);
 
                 if (stillHasFuel) {
-                    // 2. Update Shared Counter
+                    // Update Shared Counter
                     if (simulator != null) {
                         simulator.incrementHighwayCounter();
                     }
                 } else {
-                    // 3. Out of Fuel Logic
+                    // Out of Fuel
                     this.status = "Out of Fuel";
-                    this.isPaused = true; // Pause the thread
+                    this.isPaused = true;
                 }
 
-                // Simulate 1 second of travel time
                 Thread.sleep(1000);
 
             } catch (InterruptedException e) {
@@ -85,47 +79,23 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
     }
 
     public void resumeSimulation() {
-        // --- LOGIC FIX 2: Always allow resume ---
-        // When we refuel, we call this. We MUST allow isPaused to become false
-        // regardless of the previous "Out of Fuel" status.
         this.isPaused = false;
-        // Reset status to Running immediately so the loop picks it up
         this.status = "Running";
     }
 
-    public String getStatus() {
-        return status;
-    }
-
-    // --- Abstract Methods ---
+    public String getStatus() { return status; }
     public abstract boolean simulateTravel(double distance);
     public abstract void move(double distance) throws InvalidOperationException;
     public abstract double calculateFuelEfficiency();
     public abstract double estimateJourneyTime(double distance);
     public abstract String toCSVString();
-
-    // --- Getters & Helpers ---
     public String getId() { return id; }
     public String getModel() { return model; }
     public double getMaxSpeed() { return maxSpeed; }
     public double getCurrentMileage() { return currentMileage; }
-
-    protected void addMileage(double distance) {
-        if (distance > 0) currentMileage += distance;
-    }
-
+    protected void addMileage(double distance) { if (distance > 0) currentMileage += distance; }
     public void resetMileage() { this.currentMileage = 0.0; }
-
-    public void displayInfo() {
-        System.out.println("ID: " + id + ", Model: " + model);
-    }
-
-    @Override
-    public int compareTo(Vehicle other) {
-        return Double.compare(other.calculateFuelEfficiency(), this.calculateFuelEfficiency());
-    }
-
-    public String getDetails() {
-        return String.format("%s: %s (ID: %s)", getClass().getSimpleName(), model, id);
-    }
+    public void displayInfo() { System.out.println("ID: " + id + ", Model: " + model); }
+    @Override public int compareTo(Vehicle other) { return Double.compare(other.calculateFuelEfficiency(), this.calculateFuelEfficiency()); }
+    public String getDetails() { return String.format("%s: %s (ID: %s)", getClass().getSimpleName(), model, id); }
 }
