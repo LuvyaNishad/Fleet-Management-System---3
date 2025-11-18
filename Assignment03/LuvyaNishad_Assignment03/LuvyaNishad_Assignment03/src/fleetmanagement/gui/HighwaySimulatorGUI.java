@@ -25,12 +25,13 @@ public class HighwaySimulatorGUI {
     private JLabel lblVehicle1, lblVehicle2, lblVehicle3;
     private JButton btnRefuel1, btnRefuel2, btnRefuel3;
 
-    // --- THE BUG IS HERE (Uncorrected Version) ---
-    // NO 'synchronized' keyword = Race Condition happens here
-    public void incrementHighwayCounter() {
+    // --- THE FIX IS HERE (Corrected Version) ---
+    // Added 'synchronized' to prevent the race condition.
+    public synchronized void incrementHighwayCounter() {
         int currentDistance = highwayDistance;
         try {
-            Thread.sleep(5); // Force context switch to reveal bug
+            // Even with this sleep, the lock prevents other threads from entering!
+            Thread.sleep(5);
         } catch (InterruptedException e) {}
         highwayDistance = currentDistance + 1;
     }
@@ -46,7 +47,7 @@ public class HighwaySimulatorGUI {
     }
 
     public void createAndShowGUI() throws InvalidOperationException {
-        frame = new JFrame("Fleet Highway Simulator (UNCORRECTED Version)");
+        frame = new JFrame("Fleet Highway Simulator (CORRECTED Version)");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(750, 500);
         frame.setLayout(new BorderLayout());
@@ -128,8 +129,6 @@ public class HighwaySimulatorGUI {
     }
 
     private void setupFleet() throws InvalidOperationException {
-        // --- Restored Realistic Capacities ---
-
         // 1. Car: 50.0 Liters
         Car car1 = new Car("C001", "Toyota Camry", 180.0, 4);
         car1.refuel(50.0);
@@ -153,7 +152,6 @@ public class HighwaySimulatorGUI {
     private void addListeners() {
         btnStart.addActionListener(e -> {
             for (Vehicle v : fleet) {
-                // Create new threads only if they don't exist or are dead
                 Thread t = new Thread(v);
                 vehicleThreads.add(t);
                 t.start();
@@ -201,10 +199,6 @@ public class HighwaySimulatorGUI {
             Vehicle v = fleet.get(vehicleIndex);
             if (v instanceof fleetmanagement.interfaces.FuelConsumable) {
                 ((fleetmanagement.interfaces.FuelConsumable) v).refuel(amount);
-
-                // Logic: If it was "Out of Fuel", it auto-resumes (handled inside Vehicle class)
-                // If it was manually "Paused", it effectively stays paused until User clicks Resume
-                // (Because refuel doesn't change 'isPaused' flag unless it was out of fuel)
             }
         } catch (InvalidOperationException ex) {
             ex.printStackTrace();
@@ -244,8 +238,6 @@ public class HighwaySimulatorGUI {
         label.setText(String.format("<html><b>%s</b> (%s): %.0f km travelled<br/>Fuel: %.1f L  |  Status: <font color='%s'>%s</font></html>",
                 v.getClass().getSimpleName(), v.getId(), v.getCurrentMileage(), fuel, color, status));
 
-        // --- FIX: Enable Refuel if NOT Running ---
-        // This allows refuel when Paused, Stopped, or Out of Fuel
         if (!status.equals("Running") && !status.equals("Idle")) {
             refuelBtn.setEnabled(true);
         } else {
