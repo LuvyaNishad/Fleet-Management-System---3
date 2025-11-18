@@ -1,29 +1,22 @@
 package fleetmanagement.vehicles;
 
 import fleetmanagement.exceptions.InvalidOperationException;
-// Import the GUI class
 import fleetmanagement.gui.HighwaySimulatorGUI;
 
-// 1. Implement Runnable
 public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
     private String id;
     private String model;
     private double maxSpeed;
     private double currentMileage;
 
-    // --- NEW THREADING FIELDS ---
-
-    // 2. Add control flags
-    // 'volatile' ensures threads see the most recent value
+    // Threading flags
     private volatile boolean isRunning = true;
-    private volatile boolean isPaused = false;
-    private volatile String status = "Idle"; // For GUI display
+    protected volatile boolean isPaused = false; // changed to protected so subclasses can access if needed
+    private volatile String status = "Idle";
 
-    // 3. Add a reference to the main GUI/Simulator
-    // This is needed so the vehicle can call the shared counter
+    // Reference to the shared simulator
     private HighwaySimulatorGUI simulator;
 
-    // Your existing constructor
     public Vehicle(String id, String model, double maxSpeed) throws InvalidOperationException {
         if (id == null || id.trim().isEmpty()) {
             throw new InvalidOperationException("Vehicle ID cannot be empty");
@@ -34,46 +27,48 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
         this.currentMileage = 0.0;
     }
 
-    // 4. Add a "setter" for the simulator reference
     public void setSimulator(HighwaySimulatorGUI simulator) {
         this.simulator = simulator;
     }
 
-    // --- 5. IMPLEMENT THE RUN() METHOD ---
     @Override
     public void run() {
         this.status = "Running";
         while (isRunning) {
             try {
-                // This loop handles the "pause" state
+                // --- LOGIC FIX 1: Handle Pause Correctly ---
                 while (isPaused) {
-                    this.status = "Paused";
-                    Thread.sleep(100); // Wait 100ms and check again
+                    // Only overwrite status if we are NOT Out of Fuel
+                    // This ensures the GUI sees "Out of Fuel" and enables the Refuel button
+                    if (!this.status.equals("Out of Fuel")) {
+                        this.status = "Paused";
+                    }
+                    Thread.sleep(100);
                 }
-                this.status = "Running";
 
-                // --- This is the main simulation logic ---
+                // If we just woke up from a pause (and have fuel), set to Running
+                if (!this.status.equals("Out of Fuel")) {
+                    this.status = "Running";
+                }
 
-                // A) Simulate 1km of travel
+                // 1. Simulate Travel (consumes fuel)
                 boolean stillHasFuel = simulateTravel(1.0);
 
                 if (stillHasFuel) {
-                    // B) !!! THIS IS THE RACE CONDITION !!!
-                    // Call the unsynchronized method on the shared simulator object
+                    // 2. Update Shared Counter
                     if (simulator != null) {
                         simulator.incrementHighwayCounter();
                     }
                 } else {
-                    // C) Out of fuel, so pause this thread
-                    this.isPaused = true;
+                    // 3. Out of Fuel Logic
                     this.status = "Out of Fuel";
+                    this.isPaused = true; // Pause the thread
                 }
 
-                // Wait for approx 1 second
+                // Simulate 1 second of travel time
                 Thread.sleep(1000);
 
             } catch (InterruptedException e) {
-                // Thread was interrupted, stop running
                 this.isRunning = false;
                 this.status = "Stopped";
             }
@@ -81,16 +76,6 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
         this.status = "Stopped";
     }
 
-    // --- 6. NEW/MODIFIED METHODS FOR THREADING ---
-
-    /**
-     * Simulates travel for a given distance.
-     * Consumes fuel and adds mileage.
-     * @return true if travel was successful (had fuel), false if out of fuel.
-     */
-    public abstract boolean simulateTravel(double distance);
-
-    // Call this from your GUI buttons
     public void stopSimulation() {
         this.isRunning = false;
     }
@@ -100,44 +85,39 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
     }
 
     public void resumeSimulation() {
-        // Only resume if not out of fuel
-        if (!this.status.equals("Out of Fuel")) {
-            this.isPaused = false;
-        }
+        // --- LOGIC FIX 2: Always allow resume ---
+        // When we refuel, we call this. We MUST allow isPaused to become false
+        // regardless of the previous "Out of Fuel" status.
+        this.isPaused = false;
+        // Reset status to Running immediately so the loop picks it up
+        this.status = "Running";
     }
 
-    // This is a new helper for the GUI
     public String getStatus() {
         return status;
     }
 
-    // --- All your other existing methods from A2 ---
+    // --- Abstract Methods ---
+    public abstract boolean simulateTravel(double distance);
+    public abstract void move(double distance) throws InvalidOperationException;
+    public abstract double calculateFuelEfficiency();
+    public abstract double estimateJourneyTime(double distance);
+    public abstract String toCSVString();
 
+    // --- Getters & Helpers ---
     public String getId() { return id; }
     public String getModel() { return model; }
     public double getMaxSpeed() { return maxSpeed; }
     public double getCurrentMileage() { return currentMileage; }
 
     protected void addMileage(double distance) {
-        if (distance > 0) {
-            currentMileage += distance;
-        }
+        if (distance > 0) currentMileage += distance;
     }
 
-    public void resetMileage() {
-        this.currentMileage = 0.0;
-    }
-
-    public abstract void move(double distance) throws InvalidOperationException;
-    public abstract double calculateFuelEfficiency();
-    public abstract double estimateJourneyTime(double distance);
+    public void resetMileage() { this.currentMileage = 0.0; }
 
     public void displayInfo() {
-        System.out.println("=== VEHICLE INFORMATION ===");
-        System.out.println("ID: " + id);
-        System.out.println("Model: " + model);
-        System.out.println("Max Speed: " + maxSpeed + " km/h");
-        System.out.println("Current Mileage: " + currentMileage + " km");
+        System.out.println("ID: " + id + ", Model: " + model);
     }
 
     @Override
@@ -145,10 +125,7 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
         return Double.compare(other.calculateFuelEfficiency(), this.calculateFuelEfficiency());
     }
 
-    public abstract String toCSVString();
-
     public String getDetails() {
-        return String.format("%s: %s (ID: %s) - %.1f km/h, %.1f km mileage",
-                getClass().getSimpleName(), model, id, maxSpeed, currentMileage);
+        return String.format("%s: %s (ID: %s)", getClass().getSimpleName(), model, id);
     }
 }
