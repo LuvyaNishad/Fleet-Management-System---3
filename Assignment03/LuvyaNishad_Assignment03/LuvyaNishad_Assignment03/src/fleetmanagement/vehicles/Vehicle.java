@@ -1,7 +1,7 @@
 package fleetmanagement.vehicles;
 
 import fleetmanagement.exceptions.InvalidOperationException;
-import fleetmanagement.gui.HighwaySimulatorGUI;
+import fleetmanagement.interfaces.HighwayTracker; // Use the new interface
 
 public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
     private String id;
@@ -10,10 +10,11 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
     private double currentMileage;
 
     private volatile boolean isRunning = true;
-    protected volatile boolean isPaused = false;
+    protected volatile boolean isPaused = false; // Protected so subclasses can check if needed, though accessor is better
     private volatile String status = "Idle";
 
-    private HighwaySimulatorGUI simulator;
+    // Decoupled: Uses Interface instead of GUI class directly
+    private HighwayTracker simulator;
 
     public Vehicle(String id, String model, double maxSpeed) throws InvalidOperationException {
         if (id == null || id.trim().isEmpty()) {
@@ -25,7 +26,8 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
         this.currentMileage = 0.0;
     }
 
-    public void setSimulator(HighwaySimulatorGUI simulator) {
+    // Updated setter to accept the Interface
+    public void setSimulator(HighwayTracker simulator) {
         this.simulator = simulator;
     }
 
@@ -34,13 +36,17 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
         this.status = "Running";
         while (isRunning) {
             try {
-                // Handle Pause
-                while (isPaused) {
-                    if (!this.status.equals("Out of Fuel")) {
-                        this.status = "Paused";
+                // --- OPTIMIZATION FIX (Feedback Point 1) ---
+                // Replaced polling (sleep loop) with efficient wait/notify
+                synchronized (this) {
+                    while (isPaused) {
+                        if (!this.status.equals("Out of Fuel")) {
+                            this.status = "Paused";
+                        }
+                        wait(); // Releases lock and waits efficiently until notified
                     }
-                    Thread.sleep(100);
                 }
+                // -------------------------------------------
 
                 if (!this.status.equals("Out of Fuel")) {
                     this.status = "Running";
@@ -50,21 +56,22 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
                 boolean stillHasFuel = simulateTravel(1.0);
 
                 if (stillHasFuel) {
-                    // Update Shared Counter
+                    // Update Shared Counter via Interface
                     if (simulator != null) {
                         simulator.incrementHighwayCounter();
                     }
                 } else {
                     // Out of Fuel
                     this.status = "Out of Fuel";
-                    this.isPaused = true;
+                    this.isPaused = true; // Will catch on next loop iteration
                 }
 
-                Thread.sleep(1000);
+                Thread.sleep(1000); // Simulate 1 second of travel
 
             } catch (InterruptedException e) {
                 this.isRunning = false;
                 this.status = "Stopped";
+                Thread.currentThread().interrupt(); // Restore interrupt status
             }
         }
         this.status = "Stopped";
@@ -74,13 +81,16 @@ public abstract class Vehicle implements Comparable<Vehicle>, Runnable {
         this.isRunning = false;
     }
 
-    public void pauseSimulation() {
+    // Synchronized to ensure thread safety with wait/notify logic
+    public synchronized void pauseSimulation() {
         this.isPaused = true;
     }
 
-    public void resumeSimulation() {
+    // Updated to use notifyAll() to wake up the waiting thread
+    public synchronized void resumeSimulation() {
         this.isPaused = false;
         this.status = "Running";
+        notifyAll(); // Wakes up the thread paused in the run() method
     }
 
     public String getStatus() { return status; }

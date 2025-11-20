@@ -5,13 +5,15 @@ import fleetmanagement.vehicles.Car;
 import fleetmanagement.vehicles.Truck;
 import fleetmanagement.vehicles.Airplane;
 import fleetmanagement.exceptions.InvalidOperationException;
+import fleetmanagement.interfaces.HighwayTracker; // Import the interface
 
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class HighwaySimulatorGUI {
+// Implements HighwayTracker to satisfy dependency inversion (Feedback Point 3)
+public class HighwaySimulatorGUI implements HighwayTracker {
 
     // Shared Resource
     public static int highwayDistance = 0;
@@ -25,16 +27,14 @@ public class HighwaySimulatorGUI {
     private JLabel lblVehicle1, lblVehicle2, lblVehicle3;
     private JButton btnRefuel1, btnRefuel2, btnRefuel3;
 
-    // --- THE FIX IS HERE (Corrected Version) ---
-    // Added 'synchronized' to prevent the race condition.
+    // --- LOGIC CLEANUP FIX (Feedback Point 2) ---
+    // Removed Thread.sleep(5) as synchronized guarantees safety without it.
+    @Override
     public synchronized void incrementHighwayCounter() {
-        int currentDistance = highwayDistance;
-        try {
-            // Even with this sleep, the lock prevents other threads from entering!
-            Thread.sleep(5);
-        } catch (InterruptedException e) {}
-        highwayDistance = currentDistance + 1;
+        // Correct atomic update
+        highwayDistance++;
     }
+    // ---------------------------------------------
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
@@ -47,7 +47,7 @@ public class HighwaySimulatorGUI {
     }
 
     public void createAndShowGUI() throws InvalidOperationException {
-        frame = new JFrame("Fleet Highway Simulator (CORRECTED Version)");
+        frame = new JFrame("Fleet Highway Simulator (Professional Version)"); // Updated Title
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(750, 500);
         frame.setLayout(new BorderLayout());
@@ -132,7 +132,7 @@ public class HighwaySimulatorGUI {
         // 1. Car: 50.0 Liters
         Car car1 = new Car("C001", "Toyota Camry", 180.0, 4);
         car1.refuel(50.0);
-        car1.setSimulator(this);
+        car1.setSimulator(this); // Passes 'this' as a HighwayTracker
 
         // 2. Truck: 100.0 Liters
         Truck truck1 = new Truck("T001", "Ford F-150", 120.0, 6);
